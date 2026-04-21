@@ -1,0 +1,36 @@
+{
+  "summary": "Full backend + frontend review of Excel Tutoring app. Backend: 26/27 pytest cases pass against live REACT_APP_BACKEND_URL covering health, modules, pricing, FAQ, testimonials (public + submit + admin approve/delete), tutor application, contact, registration, login, /auth/me cookie check, logout, Google session header validation, admin RBAC (403 for students, 200 for admin across 7 admin endpoints), tutor approve creates tutor user, assignments flow + student enrollment visibility, and full subscription flow (subscribe -> pending -> confirm -> active -> cancel with notifications). Frontend: admin + student auth, navigation across 11 public pages, protected /dashboard redirect, admin dashboard (analytics cards, all 5 tabs, Assign tutor/module button), student dashboard (subscription state + modules + next-steps), pricing subscribe opens Paystack URL in new tab, WhatsApp float href = https://wa.me/27781246757 verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/login", "issue": "Brute-force lockout (429) did not trigger within 8 wrong attempts in test. Identifier uses request.client.host + email; behind ingress the client IP may vary per connection, so count never reaches 5 for the same identifier. Consider using X-Forwarded-For / email-only, or lowering threshold."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All pages", "issues": ["Document <title> is still 'Emergent | Fullstack App' — should be 'Excel Tutoring' for SEO/branding."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(Optional) Harden brute-force lockout to use forwarded client IP or email-only identifier so 429 reliably triggers behind proxies.",
+    "(Optional) Update <title> in /app/frontend/public/index.html from 'Emergent | Fullstack App' to 'Excel Tutoring — Premium SA Tutoring'."
+  ],
+  "critical_code_review_comments": [
+    "server.py is ~850 lines; acceptable for MVP but consider splitting (auth, admin, student, public) if it grows further.",
+    "Paystack flow is explicitly mocked (manual 'I've paid' confirm) — matches stated MVP scope.",
+    "No webhook/idempotency on /student/subscription/confirm (user can self-confirm without paying). Acceptable per MVP mocked-API note.",
+    "Seeded admin password update path is handled correctly via verify_password re-hash on startup — good.",
+    "All endpoints use /api prefix and ObjectId _id is excluded via {'_id': 0} projections or sanitize_user(). Good."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "96%", "frontend": "100%"},
+  "test_credentials": "admin@exceltutoring.co.za / ExcelAdmin2026! ; student.hs@test.com / Student123! ; student.uni@test.com / Student123!",
+  "seed_data_creation": "Seed data is auto-created at backend startup (modules x7, plans x4, testimonials x4, admin, 2 demo students). Test also created TEST_ prefixed testimonials/tutor applications/users via API — left in DB but prefixed for easy cleanup.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Live URL https://learn-platform-146.preview.emergentagent.com used for all tests. Cookies are httpOnly+SameSite=None+Secure. When writing Playwright login selectors, use page.get_by_role('button', name='Sign in') — a bare button[type='submit'] is ambiguous because the nav 'Log in' link also matches in some cases. Testimonial submit UI form field selectors were not explored — backend POST /api/testimonials is verified working.",
+  "rca of the issue": "Brute-force lockout test flakiness: backend records login_attempts keyed by f'{client_ip}:{email}'. Behind the Kubernetes ingress, client.host is often the ingress pod IP which is stable per pod but the worker load-balanced backend pod may vary per request and FastAPI sees request.client.host as the upstream proxy IP that can differ across keepalive connections. Because upsert is by identifier, different IPs never aggregate. Mitigation: read X-Forwarded-For header (first hop) and use that (or just the email) as the identifier."
+}
