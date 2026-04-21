@@ -271,7 +271,8 @@ async def register(data: RegisterIn, response: Response):
 @api.post("/auth/login")
 async def login(data: LoginIn, request: Request, response: Response):
     email = data.email.lower().strip()
-    ip = request.client.host if request.client else "unknown"
+    xff = request.headers.get("x-forwarded-for", "")
+    ip = xff.split(",")[0].strip() if xff else (request.client.host if request.client else "unknown")
     identifier = f"{ip}:{email}"
 
     # Brute-force lockout
