@@ -125,6 +125,42 @@ class SubscribeIn(BaseModel):
     plan_id: str
 
 
+class ModuleIn(BaseModel):
+    level: Literal["high_school", "university"]
+    code: str
+    name: str
+    description: str
+    grade_range: Optional[str] = None
+
+
+class ModuleUpdate(BaseModel):
+    level: Optional[Literal["high_school", "university"]] = None
+    code: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    grade_range: Optional[str] = None
+
+
+class PricingIn(BaseModel):
+    name: str
+    audience: Literal["high_school", "university"]
+    price_zar: int = Field(ge=0)
+    period: str = "month"
+    order: int = 0
+    features: List[str]
+    popular: bool = False
+
+
+class PricingUpdate(BaseModel):
+    name: Optional[str] = None
+    audience: Optional[Literal["high_school", "university"]] = None
+    price_zar: Optional[int] = Field(default=None, ge=0)
+    period: Optional[str] = None
+    order: Optional[int] = None
+    features: Optional[List[str]] = None
+    popular: Optional[bool] = None
+
+
 # -----------------------------------------------------------------------------
 # Password / JWT helpers
 # -----------------------------------------------------------------------------
@@ -744,6 +780,68 @@ async def admin_contact(_: dict = Depends(require_admin)):
         if isinstance(m.get("created_at"), datetime):
             m["created_at"] = m["created_at"].isoformat()
     return msgs
+
+
+# ---- Admin: Modules CRUD ----
+@api.post("/admin/modules")
+async def admin_create_module(data: ModuleIn, _: dict = Depends(require_admin)):
+    prefix = "hs" if data.level == "high_school" else "uni"
+    doc = {"id": f"{prefix}-{uuid.uuid4().hex[:6]}", **data.model_dump()}
+    await db.modules.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.patch("/admin/modules/{module_id}")
+async def admin_update_module(module_id: str, data: ModuleUpdate, _: dict = Depends(require_admin)):
+    patch = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not patch:
+        raise HTTPException(400, "Nothing to update")
+    r = await db.modules.update_one({"id": module_id}, {"$set": patch})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Module not found")
+    mod = await db.modules.find_one({"id": module_id}, {"_id": 0})
+    return mod
+
+
+@api.delete("/admin/modules/{module_id}")
+async def admin_delete_module(module_id: str, _: dict = Depends(require_admin)):
+    r = await db.modules.delete_one({"id": module_id})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Module not found")
+    # Cascade-clean enrollments
+    await db.enrollments.delete_many({"module_id": module_id})
+    return {"ok": True}
+
+
+# ---- Admin: Pricing plans CRUD ----
+@api.post("/admin/pricing")
+async def admin_create_plan(data: PricingIn, _: dict = Depends(require_admin)):
+    prefix = "plan-hs" if data.audience == "high_school" else "plan-uni"
+    doc = {"id": f"{prefix}-{uuid.uuid4().hex[:6]}", **data.model_dump()}
+    await db.pricing_plans.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.patch("/admin/pricing/{plan_id}")
+async def admin_update_plan(plan_id: str, data: PricingUpdate, _: dict = Depends(require_admin)):
+    patch = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not patch:
+        raise HTTPException(400, "Nothing to update")
+    r = await db.pricing_plans.update_one({"id": plan_id}, {"$set": patch})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Plan not found")
+    plan = await db.pricing_plans.find_one({"id": plan_id}, {"_id": 0})
+    return plan
+
+
+@api.delete("/admin/pricing/{plan_id}")
+async def admin_delete_plan(plan_id: str, _: dict = Depends(require_admin)):
+    r = await db.pricing_plans.delete_one({"id": plan_id})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Plan not found")
+    return {"ok": True}
 
 
 # -----------------------------------------------------------------------------

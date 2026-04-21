@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { ModulesAdmin, PricingAdmin } from "@/components/admin/ContentAdmin";
 import api from "@/lib/api";
 
 function Stat({ icon: Icon, label, value, testid }) {
@@ -84,11 +85,12 @@ export default function AdminDashboard() {
   const [subs, setSubs] = useState([]);
   const [msgs, setMsgs] = useState([]);
   const [modules, setModules] = useState([]);
+  const [plans, setPlans] = useState([]);
   const { toast } = useToast();
 
   const load = async () => {
     try {
-      const [a, s, t, tu, ts, sb, m, mo] = await Promise.all([
+      const [a, s, t, tu, ts, sb, m, mo, pl] = await Promise.all([
         api.get("/admin/analytics"),
         api.get("/admin/students"),
         api.get("/admin/tutors"),
@@ -97,9 +99,10 @@ export default function AdminDashboard() {
         api.get("/admin/subscriptions"),
         api.get("/admin/contact-messages"),
         api.get("/modules"),
+        api.get("/pricing"),
       ]);
       setAnalytics(a.data); setStudents(s.data); setApps(t.data); setActiveTutors(tu.data);
-      setTestimonials(ts.data); setSubs(sb.data); setMsgs(m.data); setModules(mo.data);
+      setTestimonials(ts.data); setSubs(sb.data); setMsgs(m.data); setModules(mo.data); setPlans(pl.data);
     } catch (e) { toast({ title: "Failed to load", description: e?.response?.data?.detail || e.message, variant: "destructive" }); }
   };
   useEffect(() => { load(); }, []);
@@ -148,6 +151,8 @@ export default function AdminDashboard() {
             <TabsTrigger value="subs" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-subs">Subscriptions ({subs.length})</TabsTrigger>
             <TabsTrigger value="testimonials" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-testimonials">Testimonials ({testimonials.length})</TabsTrigger>
             <TabsTrigger value="messages" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-messages">Messages ({msgs.length})</TabsTrigger>
+            <TabsTrigger value="modules" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-modules">Modules ({modules.length})</TabsTrigger>
+            <TabsTrigger value="plans" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-plans">Pricing ({plans.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="students" className="mt-6">
@@ -261,6 +266,14 @@ export default function AdminDashboard() {
               </div>
             ))}
             {msgs.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 p-12 text-center text-slate-400">No messages.</div>}
+          </TabsContent>
+
+          <TabsContent value="modules" className="mt-6">
+            <ModulesAdmin modules={modules} onChange={load} />
+          </TabsContent>
+
+          <TabsContent value="plans" className="mt-6">
+            <PricingAdmin plans={plans} onChange={load} />
           </TabsContent>
         </Tabs>
       </div>
