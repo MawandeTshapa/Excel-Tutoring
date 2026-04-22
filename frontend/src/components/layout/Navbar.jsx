@@ -19,7 +19,7 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const dashHref = user?.role === "admin" ? "/admin" : "/dashboard";
+  const dashHref = user?.role === "admin" ? "/admin" : user?.role === "tutor" ? "/tutor" : "/dashboard";
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/70 bg-white/85 backdrop-blur-xl" data-testid="site-header">

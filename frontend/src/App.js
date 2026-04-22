@@ -18,6 +18,7 @@ import AuthCallback from "@/pages/AuthCallback";
 import Onboarding from "@/pages/Onboarding";
 import StudentDashboard from "@/pages/StudentDashboard";
 import AdminDashboard from "@/pages/AdminDashboard";
+import TutorDashboard from "@/pages/TutorDashboard";
 
 function Loader() {
   return (
@@ -67,6 +68,7 @@ function AppRoutes() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/onboarding" element={<Protected><Onboarding /></Protected>} />
         <Route path="/dashboard" element={<Protected role="student"><StudentDashboard /></Protected>} />
+        <Route path="/tutor" element={<Protected role="tutor"><TutorDashboard /></Protected>} />
         <Route path="/admin" element={<Protected role="admin"><AdminDashboard /></Protected>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

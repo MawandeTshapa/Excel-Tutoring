@@ -509,6 +509,66 @@ async def faq():
 
 
 # -----------------------------------------------------------------------------
+# Tutor endpoints
+# -----------------------------------------------------------------------------
+async def require_tutor(request: Request) -> dict:
+    user = await require_user(request)
+    if user.get("role") != "tutor":
+        raise HTTPException(status_code=403, detail="Tutors only")
+    return user
+
+
+@api.get("/tutor/students")
+async def tutor_students(user: dict = Depends(require_tutor)):
+    enrolls = await db.enrollments.find(
+        {"tutor_user_id": user["user_id"]}, {"_id": 0}
+    ).to_list(500)
+    out = []
+    for e in enrolls:
+        mod = await db.modules.find_one({"id": e.get("module_id")}, {"_id": 0})
+        st = await db.users.find_one(
+            {"user_id": e.get("student_user_id")}, {"_id": 0, "password_hash": 0}
+        )
+        if not st:
+            continue
+        sub = await db.subscriptions.find_one({"user_id": st["user_id"]}, {"_id": 0})
+        sub_status = sub.get("status") if sub else None
+        out.append({
+            "enrollment_id": e.get("id"),
+            "module": mod,
+            "student": {
+                "user_id": st["user_id"],
+                "name": st.get("name"),
+                "email": st.get("email"),
+                "phone": st.get("phone"),
+                "role": st.get("role"),
+            },
+            "subscription_status": sub_status,
+        })
+    return out
+
+
+@api.get("/tutor/summary")
+async def tutor_summary(user: dict = Depends(require_tutor)):
+    enrolls = await db.enrollments.find(
+        {"tutor_user_id": user["user_id"]}, {"_id": 0}
+    ).to_list(1000)
+    student_ids = {e["student_user_id"] for e in enrolls}
+    module_ids = {e["module_id"] for e in enrolls}
+    active = 0
+    for sid in student_ids:
+        s = await db.subscriptions.find_one({"user_id": sid, "status": "active"})
+        if s:
+            active += 1
+    return {
+        "total_students": len(student_ids),
+        "total_modules": len(module_ids),
+        "active_subscriptions": active,
+        "enrollments": len(enrolls),
+    }
+
+
+# -----------------------------------------------------------------------------
 # Student endpoints
 # -----------------------------------------------------------------------------
 @api.get("/student/enrollments")
@@ -642,8 +702,8 @@ async def admin_tutor_action(app_id: str, action: str, _: dict = Depends(require
         raise HTTPException(404, "Not found")
     status = "approved" if action == "approve" else "rejected"
     await db.tutor_applications.update_one({"id": app_id}, {"$set": {"status": status}})
+    temp_pwd = None
     if action == "approve":
-        # Create tutor user if not exists
         existing = await db.users.find_one({"email": appn["email"].lower()})
         if not existing:
             temp_pwd = secrets.token_urlsafe(8)
@@ -661,7 +721,7 @@ async def admin_tutor_action(app_id: str, action: str, _: dict = Depends(require
                 "created_at": datetime.now(timezone.utc),
             })
             logger.info(f"Created tutor user {appn['email']} with temp password: {temp_pwd}")
-    return {"ok": True, "status": status}
+    return {"ok": True, "status": status, "temp_password": temp_pwd}
 
 
 @api.get("/admin/testimonials")

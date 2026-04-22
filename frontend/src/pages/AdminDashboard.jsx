@@ -109,8 +109,12 @@ export default function AdminDashboard() {
 
   const tutorAction = async (id, action) => {
     try {
-      await api.patch(`/admin/tutors/${id}/${action}`);
-      toast({ title: `Application ${action}d` });
+      const { data } = await api.patch(`/admin/tutors/${id}/${action}`);
+      if (action === "approve" && data?.temp_password) {
+        toast({ title: "Application approved", description: `Temp login password: ${data.temp_password}  (share with tutor)`, duration: 12000 });
+      } else {
+        toast({ title: `Application ${action}d` });
+      }
       load();
     } catch (e) { toast({ title: "Failed", description: e?.response?.data?.detail || e.message, variant: "destructive" }); }
   };

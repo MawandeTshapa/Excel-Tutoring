@@ -25,7 +25,10 @@ export default function Login() {
       setUser(data);
       toast({ title: "Welcome back!", description: `Signed in as ${data.name}` });
       if (dest) return nav(dest);
-      nav(data.role === "admin" ? "/admin" : "/dashboard");
+      if (data.role === "admin") nav("/admin");
+      else if (data.role === "tutor") nav("/tutor");
+      else if (data.role === "pending") nav("/onboarding");
+      else nav("/dashboard");
     } catch (err) {
       toast({ title: "Login failed", description: formatApiError(err), variant: "destructive" });
     } finally { setLoading(false); }

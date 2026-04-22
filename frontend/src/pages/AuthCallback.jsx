@@ -30,6 +30,7 @@ export default function AuthCallback() {
         window.history.replaceState(null, "", window.location.pathname);
         if (!data.role || data.role === "pending") nav("/onboarding");
         else if (data.role === "admin") nav("/admin");
+        else if (data.role === "tutor") nav("/tutor");
         else nav("/dashboard");
       } catch (e) {
         setError(e?.response?.data?.detail || "Authentication failed");
