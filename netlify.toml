@@ -1,7 +1,12 @@
 [build]
   base = "frontend"
   command = "yarn build"
-  publish = "frontend/build"
+  publish = "build"
+
+[build.environment]
+  CI = "false"
+  NODE_VERSION = "20"
+  YARN_VERSION = "1.22.22"
 
 # React Router deep-link support — without this /dashboard, /admin, /tutor, /auth/callback etc. return 404 on refresh
 [[redirects]]
