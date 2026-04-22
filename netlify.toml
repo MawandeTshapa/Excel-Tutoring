@@ -1,0 +1,10 @@
+[build]
+  base = "frontend"
+  command = "yarn build"
+  publish = "frontend/build"
+
+# React Router deep-link support — without this /dashboard, /admin, /tutor, /auth/callback etc. return 404 on refresh
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
