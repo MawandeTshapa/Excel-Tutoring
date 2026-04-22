@@ -44,7 +44,7 @@ export default function Contact() {
               <div className="mt-5 space-y-4 text-slate-700">
                 <div className="flex items-center gap-3"><Mail className="h-5 w-5 text-[#1D4ED8]" /> <a href="mailto:mwandarh@gmail.com" className="hover:underline">mwandarh@gmail.com</a></div>
                 <div className="flex items-center gap-3"><Phone className="h-5 w-5 text-[#1D4ED8]" /> <a href="tel:+27781246757" className="hover:underline">+27 78 124 6757</a></div>
-                <div className="flex items-center gap-3"><MapPin className="h-5 w-5 text-[#1D4ED8]" /> Johannesburg, South Africa</div>
+                <div className="flex items-center gap-3"><MapPin className="h-5 w-5 text-[#1D4ED8]" /> Durban, KwaZulu-Natal, South Africa</div>
               </div>
             </div>
             <div className="rounded-2xl bg-[#EFF6FF] p-8">

@@ -21,7 +21,7 @@ export default function Footer() {
             <div className="mt-6 space-y-2 text-sm text-slate-400">
               <p className="flex items-center gap-2"><Mail className="h-4 w-4" /> mwandarh@gmail.com</p>
               <p className="flex items-center gap-2"><Phone className="h-4 w-4" /> +27 78 124 6757</p>
-              <p className="flex items-center gap-2"><MapPin className="h-4 w-4" /> Johannesburg, South Africa</p>
+              <p className="flex items-center gap-2"><MapPin className="h-4 w-4" /> Durban, KwaZulu-Natal, South Africa</p>
             </div>
           </div>
 
@@ -56,7 +56,7 @@ export default function Footer() {
 
         <div className="mt-16 flex flex-col items-start justify-between gap-4 border-t border-white/10 pt-8 md:flex-row md:items-center">
           <p className="text-xs text-slate-500">© {year} Excel Tutoring. All rights reserved.</p>
-          <p className="text-xs text-slate-500">Built for South African students. Proudly ZAR (R).</p>
+          <p className="text-xs text-slate-500">Built for South African students.</p>
         </div>
       </div>
     </footer>

@@ -30,7 +30,7 @@ export default function Navbar() {
           </div>
           <div className="leading-none">
             <div className="font-display text-lg font-semibold tracking-tight">Excel Tutoring</div>
-            <div className="text-[10px] uppercase tracking-[0.24em] text-slate-500">South Africa • Est. 2026</div>
+            <div className="text-[10px] uppercase tracking-[0.24em] text-slate-500">South Africa • Est. 2024</div>
           </div>
         </Link>
 

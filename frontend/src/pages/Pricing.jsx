@@ -33,7 +33,7 @@ function Plan({ p, onSubscribe }) {
         className={`mt-8 rounded-full py-6 ${popular ? "bg-[#1D4ED8] hover:bg-[#1E40AF] text-white" : "bg-[#050A15] hover:bg-[#111a34] text-white"}`}
         data-testid={`pricing-subscribe-${p.id}`}
       >
-        Subscribe with Paystack
+        Start subscription
       </Button>
     </div>
   );
@@ -78,8 +78,8 @@ export default function Pricing() {
         <div className="absolute inset-0 hero-grid-bg opacity-40" />
         <div className="container-x relative py-24 md:py-28">
           <div className="eyebrow eyebrow-inverse">Pricing</div>
-          <h1 className="mt-4 font-display text-5xl font-semibold tracking-tighter md:text-7xl">Plans in Rands. No surprises.</h1>
-          <p className="mt-6 max-w-2xl text-lg text-slate-300">Monthly subscriptions. Cancel anytime from your dashboard. All billing is handled securely via Paystack.</p>
+          <h1 className="mt-4 font-display text-5xl font-semibold tracking-tighter md:text-7xl">Simple plans. No surprises.</h1>
+          <p className="mt-6 max-w-2xl text-lg text-slate-300">Flexible monthly subscriptions. Cancel anytime from your dashboard. All billing is handled securely.</p>
         </div>
       </section>
 

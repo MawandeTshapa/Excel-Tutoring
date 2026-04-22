@@ -58,7 +58,7 @@ export default function HighSchool() {
               "Homework help on WhatsApp",
               "Monthly progress report",
               "Recorded sessions for revision",
-              "Parent-friendly billing in ZAR",
+              "Parent-friendly monthly billing",
             ].map((f) => (
               <li key={f} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-5">
                 <div className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-[#EFF6FF] text-[#1D4ED8]"><Check className="h-4 w-4" /></div>

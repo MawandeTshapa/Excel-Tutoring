@@ -35,7 +35,7 @@ export default function Home() {
               begin with <span className="text-[#60A5FA]">clarity.</span>
             </h1>
             <p className="mt-8 max-w-xl text-lg leading-relaxed text-slate-300">
-              Excel Tutoring pairs South African high school and university students with expert tutors in Mathematics, Sciences, Statistics and Computer Science. Live lessons. Real results. Monthly plans in Rands.
+              Excel Tutoring pairs South African high school and university students with expert tutors in Mathematics, Sciences, Statistics and Computer Science. Live lessons. Real results.
             </p>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
               <Link to="/high-school">
@@ -186,9 +186,9 @@ export default function Home() {
           <div className="lg:col-span-8">
             <div className="eyebrow text-blue-200">Ready?</div>
             <h2 className="mt-4 font-display text-4xl font-semibold tracking-tight md:text-6xl">Start the term on the front foot.</h2>
-            <p className="mt-4 max-w-xl text-blue-100 text-lg">Monthly plans in ZAR. Cancel anytime. First consultation is free.</p>
+            <p className="mt-4 max-w-xl text-blue-100 text-lg">Flexible monthly plans. Cancel anytime. First consultation is free.</p>
             <ul className="mt-8 space-y-2 text-blue-50">
-              <li className="flex items-center gap-2"><Check className="h-4 w-4" /> Pay in Rands via Paystack</li>
+              <li className="flex items-center gap-2"><Check className="h-4 w-4" /> Secure monthly billing</li>
               <li className="flex items-center gap-2"><Check className="h-4 w-4" /> Live online lessons, recorded for revision</li>
               <li className="flex items-center gap-2"><Check className="h-4 w-4" /> Assigned tutor + weekly progress report</li>
             </ul>

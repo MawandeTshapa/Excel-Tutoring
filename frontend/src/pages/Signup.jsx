@@ -44,7 +44,7 @@ export default function Signup() {
         <div className="absolute inset-0 bg-[#050A15]/60" />
         <div className="absolute inset-x-0 bottom-0 p-12 text-white">
           <div className="font-display text-3xl font-semibold tracking-tight">Premium tutoring, priced for South Africa.</div>
-          <div className="mt-2 text-slate-300">Plans start at R499/month. Cancel anytime.</div>
+          <div className="mt-2 text-slate-300">Flexible monthly plans. Cancel anytime.</div>
         </div>
       </div>
 

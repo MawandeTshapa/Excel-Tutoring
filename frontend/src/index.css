@@ -207,6 +207,11 @@ h6 {
     background: transparent;
 }
 
+/* Hide Emergent badge in production */
+#emergent-badge {
+    display: none !important;
+}
+
 /* Links */
 a {
     color: inherit;
