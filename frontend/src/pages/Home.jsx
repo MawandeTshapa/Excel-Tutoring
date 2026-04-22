@@ -51,7 +51,7 @@ export default function Home() {
             </div>
 
             <div className="mt-16 grid grid-cols-3 gap-8 border-t border-white/10 pt-10">
-              <Stat num="500+" label="Students" />
+              <Stat num="50+" label="Students" />
               <Stat num="98%" label="Pass rate" />
               <Stat num="4.9★" label="Average rating" />
             </div>
@@ -92,7 +92,7 @@ export default function Home() {
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:col-span-8">
               {[
                 { icon: BookOpen, title: "CAPS-aligned & university-ready", text: "Curricula aligned to your syllabus — from Grade 8 to university core modules." },
-                { icon: Users, title: "1-on-1 tutor matching", text: "We hand-pick tutors based on your subjects, goals and schedule." },
+                { icon: Users, title: "tutor matching", text: "We hand-pick tutors based on your subjects, goals and schedule." },
                 { icon: TrendingUp, title: "Progress you can see", text: "Weekly reports, homework tracking and score trendlines in your dashboard." },
                 { icon: Award, title: "Registered & trusted", text: "Officially registered SA business with a proven track record." },
               ].map((v) => (
@@ -124,7 +124,7 @@ export default function Home() {
 
           <div className="mt-12 grid grid-cols-1 gap-8 lg:grid-cols-2">
             <Link to="/high-school" className="group relative overflow-hidden rounded-3xl" data-testid="card-program-highschool">
-              <img src="https://images.pexels.com/photos/6325934/pexels-photo-6325934.jpeg" alt="High school tutoring" className="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-105" />
+              <img src="https://images.pexels.com/photos/37215204/pexels-photo-37215204.jpeg" alt="High school tutoring" className="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-[#050A15] via-[#050A15]/50 to-transparent" />
               <div className="absolute inset-x-0 bottom-0 p-10 text-white">
                 <div className="eyebrow eyebrow-inverse">Grades 8–12</div>
@@ -135,7 +135,7 @@ export default function Home() {
             </Link>
 
             <Link to="/university" className="group relative overflow-hidden rounded-3xl" data-testid="card-program-university">
-              <img src="https://images.pexels.com/photos/6326370/pexels-photo-6326370.jpeg" alt="University tutoring" className="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-105" />
+              <img src="https://images.pexels.com/photos/37215211/pexels-photo-37215211.jpeg" alt="University tutoring" className="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-[#050A15] via-[#050A15]/50 to-transparent" />
               <div className="absolute inset-x-0 bottom-0 p-10 text-white">
                 <div className="eyebrow eyebrow-inverse">University • Foundation</div>
