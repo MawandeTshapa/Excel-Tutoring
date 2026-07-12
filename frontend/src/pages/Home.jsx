@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight, Check, Sparkles, Star, Award, Users, BookOpen, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
+import { useSiteImage } from "@/hooks/use-site-image";
 
 function Stat({ num, label }) {
   return (
@@ -15,6 +16,7 @@ function Stat({ num, label }) {
 
 export default function Home() {
   const [tlist, setTlist] = useState([]);
+  const heroImage = useSiteImage("home_hero", "https://images.pexels.com/photos/6684506/pexels-photo-6684506.jpeg");
   useEffect(() => {
     api.get("/testimonials").then((r) => setTlist(r.data.slice(0, 3))).catch(() => {});
   }, []);
@@ -61,7 +63,7 @@ export default function Home() {
             <div className="relative">
               <div className="absolute -inset-4 rounded-3xl bg-[#1D4ED8]/20 blur-2xl" />
               <img
-                src="https://images.pexels.com/photos/6684506/pexels-photo-6684506.jpeg"
+                src={heroImage}
                 alt="Students studying"
                 className="relative w-full rounded-3xl object-cover shadow-2xl"
                 style={{ aspectRatio: "4/5" }}

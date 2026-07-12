@@ -3,9 +3,11 @@ import { Link } from "react-router-dom";
 import { Check, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
+import { useSiteImage } from "@/hooks/use-site-image";
 
 export default function University() {
   const [mods, setMods] = useState([]);
+  const heroImage = useSiteImage("university_hero", "https://images.pexels.com/photos/6684506/pexels-photo-6684506.jpeg");
   useEffect(() => { api.get("/modules").then((r) => setMods(r.data.filter((m) => m.level === "university"))); }, []);
 
   return (
@@ -23,7 +25,7 @@ export default function University() {
             </div>
           </div>
           <div className="lg:col-span-5">
-            <img src="https://images.pexels.com/photos/6684506/pexels-photo-6684506.jpeg" alt="University students" className="w-full rounded-3xl object-cover shadow-2xl" style={{ aspectRatio: "4/5" }} />
+            <img src={heroImage} alt="University students" className="w-full rounded-3xl object-cover shadow-2xl" style={{ aspectRatio: "4/5" }} />
           </div>
         </div>
       </section>

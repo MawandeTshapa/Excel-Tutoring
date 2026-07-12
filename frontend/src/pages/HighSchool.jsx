@@ -3,9 +3,11 @@ import { Link } from "react-router-dom";
 import { Check, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
+import { useSiteImage } from "@/hooks/use-site-image";
 
 export default function HighSchool() {
   const [mods, setMods] = useState([]);
+  const heroImage = useSiteImage("high_school_hero", "https://images.pexels.com/photos/6325934/pexels-photo-6325934.jpeg");
   useEffect(() => { api.get("/modules").then((r) => setMods(r.data.filter((m) => m.level === "high_school"))); }, []);
 
   return (
@@ -23,7 +25,7 @@ export default function HighSchool() {
             </div>
           </div>
           <div className="lg:col-span-5">
-            <img src="https://images.pexels.com/photos/6325934/pexels-photo-6325934.jpeg" alt="High school tutor" className="w-full rounded-3xl object-cover shadow-2xl" style={{ aspectRatio: "4/5" }} />
+            <img src={heroImage} alt="High school tutor" className="w-full rounded-3xl object-cover shadow-2xl" style={{ aspectRatio: "4/5" }} />
           </div>
         </div>
       </section>
