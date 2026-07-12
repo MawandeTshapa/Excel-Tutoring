@@ -372,7 +372,8 @@ export function ImagesAdmin() {
     <div className="space-y-4">
       <p className="text-sm text-slate-500">Photos update on the live site as soon as they're uploaded. JPEG, PNG, WEBP or GIF.</p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {IMAGE_SLOTS.map((s) => (
+        {IMAGE_SLOTS
+        .map((s) => (
           <ImageSlotCard key={s.slot} slot={s.slot} label={s.label} fallback={s.fallback} currentUrl={images[s.slot]} onChanged={load} />
         ))}
       </div>
