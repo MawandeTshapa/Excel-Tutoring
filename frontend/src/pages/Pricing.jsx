@@ -59,10 +59,10 @@ export default function Pricing() {
     }
     try {
       const { data } = await api.post("/student/subscribe", { plan_id: plan.id });
-      if (data.paystack_url) {
-        toast({ title: "Redirecting to Paystack", description: "Complete your payment to activate lessons." });
-        window.open(data.paystack_url, "_blank", "noopener,noreferrer");
-        navigate("/dashboard");
+      if (data.authorization_url) {
+        // Full-page redirect (not a new tab) — Paystack sends the user back to /payment/callback
+        // in this same tab once they've paid, so we can verify the transaction on return.
+        window.location.href = data.authorization_url;
       }
     } catch (e) {
       toast({ title: "Could not start checkout", description: e?.response?.data?.detail || e.message, variant: "destructive" });

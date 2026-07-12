@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import api, { formatApiError } from "@/lib/api";
+import { useSiteImage } from "@/hooks/use-site-image";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -16,6 +17,7 @@ export default function Login() {
   const { toast } = useToast();
 
   const dest = location.state?.from || null;
+  const heroImage = useSiteImage("login_hero", "https://images.pexels.com/photos/6684506/pexels-photo-6684506.jpeg");
 
   const submit = async (e) => {
     e.preventDefault();
@@ -81,7 +83,7 @@ export default function Login() {
         </form>
       </div>
       <div className="relative hidden lg:col-span-6 lg:block">
-        <img src="https://images.pexels.com/photos/6684506/pexels-photo-6684506.jpeg" alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <img src={heroImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0 bg-[#050A15]/60" />
         <div className="absolute inset-x-0 bottom-0 p-12 text-white">
           <div className="font-display text-3xl font-semibold tracking-tight">“I went from 52% to 78% in one term.”</div>

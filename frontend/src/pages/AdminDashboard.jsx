@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ModulesAdmin, PricingAdmin } from "@/components/admin/ContentAdmin";
+import { ModulesAdmin, PricingAdmin, ImagesAdmin } from "@/components/admin/ContentAdmin";
 import api from "@/lib/api";
 
 function Stat({ icon: Icon, label, value, testid }) {
@@ -110,8 +110,13 @@ export default function AdminDashboard() {
   const tutorAction = async (id, action) => {
     try {
       const { data } = await api.patch(`/admin/tutors/${id}/${action}`);
-      if (action === "approve" && data?.temp_password) {
-        toast({ title: "Application approved", description: `Temp login password: ${data.temp_password}  (share with tutor)`, duration: 12000 });
+      if (action === "approve" && data?.invite_link) {
+        navigator.clipboard?.writeText(data.invite_link).catch(() => {});
+        toast({
+          title: "Application approved — invite link copied",
+          description: `Send this to the tutor so they can set their own password: ${data.invite_link}`,
+          duration: 15000,
+        });
       } else {
         toast({ title: `Application ${action}d` });
       }
@@ -157,6 +162,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="messages" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-messages">Messages ({msgs.length})</TabsTrigger>
             <TabsTrigger value="modules" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-modules">Modules ({modules.length})</TabsTrigger>
             <TabsTrigger value="plans" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-plans">Pricing ({plans.length})</TabsTrigger>
+            <TabsTrigger value="images" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-images">Images</TabsTrigger>
           </TabsList>
 
           <TabsContent value="students" className="mt-6">
@@ -278,6 +284,10 @@ export default function AdminDashboard() {
 
           <TabsContent value="plans" className="mt-6">
             <PricingAdmin plans={plans} onChange={load} />
+          </TabsContent>
+
+          <TabsContent value="images" className="mt-6">
+            <ImagesAdmin />
           </TabsContent>
         </Tabs>
       </div>

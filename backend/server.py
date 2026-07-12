@@ -8,13 +8,16 @@ load_dotenv(ROOT_DIR / ".env")
 import logging
 import uuid
 import secrets
+import hmac
+import hashlib
+import json
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
 import bcrypt
 import jwt
 import requests
-from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends, Header
+from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
@@ -30,8 +33,28 @@ ACCESS_TOKEN_MINUTES = 60 * 24 * 7  # 7 days for a smooth preview UX
 REFRESH_TOKEN_DAYS = 30
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@exceltutoring.co.za")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "ExcelAdmin2026!")
-PAYSTACK_PAYMENT_URL = os.environ.get("PAYSTACK_PAYMENT_URL", "")
 CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
+
+# Paystack (real API integration — replaces the old static hosted-link flow)
+PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
+PAYSTACK_BASE_URL = "https://api.paystack.co"
+# Where Paystack sends the user back to after paying. Must be a real route in the frontend (see App.js: /payment/callback)
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
+# Cloudinary (admin-uploaded site images)
+CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME", "")
+CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY", "")
+CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET", "")
+if CLOUDINARY_CLOUD_NAME:
+    import cloudinary
+    import cloudinary.uploader
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+        secure=True,
+    )
 
 Role = Literal["admin", "tutor", "student_highschool", "student_university", "pending"]
 
@@ -123,6 +146,10 @@ class AssignmentIn(BaseModel):
 
 class SubscribeIn(BaseModel):
     plan_id: str
+
+
+class TutorInviteCompleteIn(BaseModel):
+    password: str = Field(min_length=6)
 
 
 class ModuleIn(BaseModel):
@@ -597,12 +624,70 @@ async def my_subscription(user: dict = Depends(require_user)):
     return sub or {}
 
 
+def _require_paystack_configured():
+    if not PAYSTACK_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Paystack is not configured on the server yet.")
+
+
+async def _activate_subscription_from_reference(reference: str) -> bool:
+    """Idempotently marks a subscription active + records a payment for a given Paystack reference.
+    Returns True if it activated something, False if the reference is unknown or already processed."""
+    sub = await db.subscriptions.find_one({"paystack_reference": reference}, {"_id": 0})
+    if not sub:
+        return False
+    already = await db.payments.find_one({"reference": reference})
+    if already:
+        return True  # already processed, nothing further to do
+    now = datetime.now(timezone.utc)
+    await db.subscriptions.update_one(
+        {"paystack_reference": reference},
+        {"$set": {"status": "active", "outstanding_zar": 0, "next_payment_date": now + timedelta(days=30)}},
+    )
+    await db.payments.insert_one({
+        "id": str(uuid.uuid4()),
+        "reference": reference,
+        "user_id": sub["user_id"],
+        "plan_id": sub["plan_id"],
+        "amount_zar": sub["amount_zar"],
+        "status": "paid",
+        "created_at": now,
+    })
+    return True
+
+
 @api.post("/student/subscribe")
 async def subscribe(data: SubscribeIn, user: dict = Depends(require_user)):
+    _require_paystack_configured()
     plan = await db.pricing_plans.find_one({"id": data.plan_id}, {"_id": 0})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
+
     now = datetime.now(timezone.utc)
+    reference = f"exceltut_{uuid.uuid4().hex[:16]}"
+
+    # Paystack amounts are in the smallest currency unit — for ZAR that's cents.
+    try:
+        r = requests.post(
+            f"{PAYSTACK_BASE_URL}/transaction/initialize",
+            headers={"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}", "Content-Type": "application/json"},
+            json={
+                "email": user["email"],
+                "amount": plan["price_zar"] * 100,
+                "currency": "ZAR",
+                "reference": reference,
+                "callback_url": f"{FRONTEND_URL}/payment/callback",
+                "metadata": {"user_id": user["user_id"], "plan_id": plan["id"]},
+            },
+            timeout=15,
+        )
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Could not reach Paystack: {e}")
+
+    body = r.json()
+    if r.status_code != 200 or not body.get("status"):
+        raise HTTPException(status_code=502, detail=body.get("message", "Paystack could not start this transaction."))
+
+    auth_data = body["data"]
     doc = {
         "user_id": user["user_id"],
         "plan_id": plan["id"],
@@ -612,33 +697,68 @@ async def subscribe(data: SubscribeIn, user: dict = Depends(require_user)):
         "started_at": now,
         "next_payment_date": now + timedelta(days=30),
         "outstanding_zar": plan["price_zar"],
-        "paystack_url": PAYSTACK_PAYMENT_URL,
+        "paystack_reference": reference,
         "cancelled_at": None,
     }
     await db.subscriptions.update_one(
         {"user_id": user["user_id"]}, {"$set": doc}, upsert=True
     )
-    return {"ok": True, "paystack_url": PAYSTACK_PAYMENT_URL, "subscription": {**doc, "started_at": doc["started_at"].isoformat(), "next_payment_date": doc["next_payment_date"].isoformat()}}
+    return {
+        "ok": True,
+        "authorization_url": auth_data["authorization_url"],
+        "reference": reference,
+    }
 
 
-@api.post("/student/subscription/confirm")
-async def confirm_subscription(user: dict = Depends(require_user)):
-    # In a real setup, this would be a Paystack webhook. Here we mark active once the user returns from Paystack.
-    sub = await db.subscriptions.find_one({"user_id": user["user_id"]}, {"_id": 0})
+@api.get("/payment/verify/{reference}")
+async def verify_payment(reference: str, user: dict = Depends(require_user)):
+    """Called by the frontend's /payment/callback page right after Paystack redirects the user back.
+    This gives a fast UI response; the webhook below is the source of truth and will also confirm it
+    even if the user closes the tab before this call finishes."""
+    _require_paystack_configured()
+    sub = await db.subscriptions.find_one({"paystack_reference": reference, "user_id": user["user_id"]})
     if not sub:
-        raise HTTPException(status_code=404, detail="No subscription")
-    await db.subscriptions.update_one(
-        {"user_id": user["user_id"]},
-        {"$set": {"status": "active", "outstanding_zar": 0}},
-    )
-    await db.payments.insert_one({
-        "id": str(uuid.uuid4()),
-        "user_id": user["user_id"],
-        "plan_id": sub["plan_id"],
-        "amount_zar": sub["amount_zar"],
-        "status": "paid",
-        "created_at": datetime.now(timezone.utc),
-    })
+        raise HTTPException(status_code=404, detail="No subscription found for this reference")
+
+    try:
+        r = requests.get(
+            f"{PAYSTACK_BASE_URL}/transaction/verify/{reference}",
+            headers={"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"},
+            timeout=15,
+        )
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Could not reach Paystack: {e}")
+
+    body = r.json()
+    if r.status_code != 200 or not body.get("status"):
+        raise HTTPException(status_code=502, detail="Could not verify this transaction with Paystack.")
+
+    ps_status = body["data"]["status"]  # "success", "failed", "abandoned"
+    if ps_status == "success":
+        await _activate_subscription_from_reference(reference)
+        return {"ok": True, "status": "active"}
+    return {"ok": True, "status": ps_status}
+
+
+@api.post("/webhooks/paystack")
+async def paystack_webhook(request: Request, x_paystack_signature: Optional[str] = Header(None)):
+    """Paystack calls this directly (not through the browser). This is the authoritative
+    confirmation of payment — configure this URL in your Paystack dashboard under
+    Settings > API Keys & Webhooks as {your_backend_url}/api/webhooks/paystack."""
+    raw_body = await request.body()
+
+    if not PAYSTACK_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Paystack is not configured on the server yet.")
+
+    expected_sig = hmac.new(PAYSTACK_SECRET_KEY.encode("utf-8"), raw_body, hashlib.sha512).hexdigest()
+    if not x_paystack_signature or not hmac.compare_digest(expected_sig, x_paystack_signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    event = json.loads(raw_body)
+    if event.get("event") == "charge.success":
+        reference = event["data"]["reference"]
+        await _activate_subscription_from_reference(reference)
+
     return {"ok": True}
 
 
@@ -702,26 +822,86 @@ async def admin_tutor_action(app_id: str, action: str, _: dict = Depends(require
         raise HTTPException(404, "Not found")
     status = "approved" if action == "approve" else "rejected"
     await db.tutor_applications.update_one({"id": app_id}, {"$set": {"status": status}})
-    temp_pwd = None
+
+    invite_link = None
     if action == "approve":
         existing = await db.users.find_one({"email": appn["email"].lower()})
         if not existing:
-            temp_pwd = secrets.token_urlsafe(8)
-            user_id = f"user_{uuid.uuid4().hex[:12]}"
-            await db.users.insert_one({
-                "user_id": user_id,
+            # Instead of generating a password ourselves, create a one-time invite the tutor
+            # uses to set their own password. Admin shares this link (WhatsApp/email/etc).
+            token = secrets.token_urlsafe(32)
+            await db.tutor_invites.insert_one({
+                "token": token,
+                "application_id": appn["id"],
                 "email": appn["email"].lower(),
-                "name": appn["full_name"],
-                "role": "tutor",
-                "auth_provider": "email",
-                "password_hash": hash_password(temp_pwd),
+                "full_name": appn["full_name"],
                 "phone": appn.get("phone"),
                 "subjects": appn.get("subjects"),
                 "level": appn.get("level"),
+                "used": False,
                 "created_at": datetime.now(timezone.utc),
+                "expires_at": datetime.now(timezone.utc) + timedelta(days=14),
             })
-            logger.info(f"Created tutor user {appn['email']} with temp password: {temp_pwd}")
-    return {"ok": True, "status": status, "temp_password": temp_pwd}
+            invite_link = f"{FRONTEND_URL}/tutor-invite/{token}"
+            logger.info(f"Created tutor invite for {appn['email']}")
+    return {"ok": True, "status": status, "invite_link": invite_link}
+
+
+# -----------------------------------------------------------------------------
+# Tutor invite (self-serve password setup) — public endpoints, gated by the token
+# -----------------------------------------------------------------------------
+@api.get("/tutors/invite/{token}")
+async def get_tutor_invite(token: str):
+    invite = await db.tutor_invites.find_one({"token": token}, {"_id": 0})
+    if not invite:
+        raise HTTPException(404, "This invite link is invalid.")
+    if invite.get("used"):
+        raise HTTPException(400, "This invite link has already been used. Please log in instead.")
+    expires_at = invite.get("expires_at")
+    if isinstance(expires_at, datetime) and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at < datetime.now(timezone.utc):
+        raise HTTPException(400, "This invite link has expired. Please ask an admin to re-approve your application.")
+    return {"full_name": invite["full_name"], "email": invite["email"]}
+
+
+@api.post("/tutors/invite/{token}/complete")
+async def complete_tutor_invite(token: str, data: TutorInviteCompleteIn, response: Response):
+    invite = await db.tutor_invites.find_one({"token": token})
+    if not invite:
+        raise HTTPException(404, "This invite link is invalid.")
+    if invite.get("used"):
+        raise HTTPException(400, "This invite link has already been used. Please log in instead.")
+    expires_at = invite.get("expires_at")
+    if isinstance(expires_at, datetime) and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at < datetime.now(timezone.utc):
+        raise HTTPException(400, "This invite link has expired. Please ask an admin to re-approve your application.")
+
+    existing = await db.users.find_one({"email": invite["email"]})
+    if existing:
+        raise HTTPException(400, "An account with this email already exists. Please log in instead.")
+
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "user_id": user_id,
+        "email": invite["email"],
+        "name": invite["full_name"],
+        "role": "tutor",
+        "auth_provider": "email",
+        "password_hash": hash_password(data.password),
+        "phone": invite.get("phone"),
+        "subjects": invite.get("subjects"),
+        "level": invite.get("level"),
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.users.insert_one(doc)
+    await db.tutor_invites.update_one({"token": token}, {"$set": {"used": True}})
+
+    access = create_access_token(user_id)
+    refresh = create_refresh_token(user_id)
+    set_auth_cookies(response, access, refresh)
+    return sanitize_user(doc)
 
 
 @api.get("/admin/testimonials")
@@ -842,6 +1022,56 @@ async def admin_contact(_: dict = Depends(require_admin)):
     return msgs
 
 
+# -----------------------------------------------------------------------------
+# Site images (admin-uploaded, Cloudinary-backed)
+# -----------------------------------------------------------------------------
+# Every slot a page might ask for. Pages fall back to their existing hardcoded photo
+# if a slot has never been uploaded to, so nothing breaks before the admin sets one.
+KNOWN_IMAGE_SLOTS = ["login_hero", "signup_hero", "home_hero", "high_school_hero", "university_hero"]
+
+
+@api.get("/site-images")
+async def list_site_images():
+    items = await db.site_images.find({}, {"_id": 0}).to_list(100)
+    return {i["slot"]: i["url"] for i in items}
+
+
+def _require_cloudinary_configured():
+    if not CLOUDINARY_CLOUD_NAME:
+        raise HTTPException(status_code=500, detail="Image uploads aren't configured on the server yet.")
+
+
+@api.post("/admin/images/{slot}")
+async def admin_upload_image(slot: str, file: UploadFile = File(...), _: dict = Depends(require_admin)):
+    _require_cloudinary_configured()
+    if slot not in KNOWN_IMAGE_SLOTS:
+        raise HTTPException(400, f"Unknown image slot '{slot}'.")
+    if file.content_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
+        raise HTTPException(400, "Please upload a JPEG, PNG, WEBP or GIF image.")
+
+    contents = await file.read()
+    try:
+        result = cloudinary.uploader.upload(
+            contents,
+            folder="excel-tutoring/site-images",
+            public_id=slot,
+            overwrite=True,
+            resource_type="image",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Cloudinary upload failed: {e}")
+
+    doc = {"slot": slot, "url": result["secure_url"], "public_id": result["public_id"], "updated_at": datetime.now(timezone.utc)}
+    await db.site_images.update_one({"slot": slot}, {"$set": doc}, upsert=True)
+    return {"slot": slot, "url": result["secure_url"]}
+
+
+@api.delete("/admin/images/{slot}")
+async def admin_reset_image(slot: str, _: dict = Depends(require_admin)):
+    await db.site_images.delete_one({"slot": slot})
+    return {"ok": True}
+
+
 # ---- Admin: Modules CRUD ----
 @api.post("/admin/modules")
 async def admin_create_module(data: ModuleIn, _: dict = Depends(require_admin)):
@@ -942,6 +1172,8 @@ async def seed():
     await db.login_attempts.create_index("identifier")
     await db.modules.create_index("id", unique=True)
     await db.pricing_plans.create_index("id", unique=True)
+    await db.tutor_invites.create_index("token", unique=True)
+    await db.site_images.create_index("slot", unique=True)
 
     # Admin
     admin = await db.users.find_one({"email": ADMIN_EMAIL})

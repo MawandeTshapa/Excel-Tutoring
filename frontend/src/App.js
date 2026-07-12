@@ -19,6 +19,8 @@ import Onboarding from "@/pages/Onboarding";
 import StudentDashboard from "@/pages/StudentDashboard";
 import AdminDashboard from "@/pages/AdminDashboard";
 import TutorDashboard from "@/pages/TutorDashboard";
+import PaymentCallback from "@/pages/PaymentCallback";
+import TutorSetPassword from "@/pages/TutorSetPassword";
 
 function Loader() {
   return (
@@ -66,6 +68,8 @@ function AppRoutes() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/payment/callback" element={<Protected role="student"><PaymentCallback /></Protected>} />
+        <Route path="/tutor-invite/:token" element={<TutorSetPassword />} />
         <Route path="/onboarding" element={<Protected><Onboarding /></Protected>} />
         <Route path="/dashboard" element={<Protected role="student"><StudentDashboard /></Protected>} />
         <Route path="/tutor" element={<Protected role="tutor"><TutorDashboard /></Protected>} />
