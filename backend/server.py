@@ -1195,6 +1195,13 @@ async def seed():
                 {"$set": {"password_hash": hash_password(ADMIN_PASSWORD), "role": "admin"}},
             )
 
+    # Demo students, default modules/plans/testimonials should only ever be created ONCE —
+    # not on every restart (Render's free tier spins down and restarts often, which was
+    # silently undoing deletions and admin price edits every time it woke back up).
+    seed_flag = await db.app_settings.find_one({"_id": "seed_status"})
+    if seed_flag:
+        return
+
     # Demo students
     for email, role in [("student.hs@test.com", "student_highschool"), ("student.uni@test.com", "student_university")]:
         ex = await db.users.find_one({"email": email})
@@ -1215,12 +1222,16 @@ async def seed():
 
     # Pricing
     for p in DEFAULT_PLANS:
-        await db.pricing_plans.update_one({"id": p["id"]}, {"$set": p}, upsert=True)
+        await db.pricing_plans.update_one({"id": p["id"]}, {"$setOnInsert": p}, upsert=True)
 
-    # Testimonials (seed once)
+    # Testimonials
     count = await db.testimonials.count_documents({})
     if count == 0:
         await db.testimonials.insert_many(DEFAULT_TESTIMONIALS)
+
+    await db.app_settings.update_one(
+        {"_id": "seed_status"}, {"$set": {"seeded_at": datetime.now(timezone.utc)}}, upsert=True
+    )
 
 
 @app.on_event("startup")
