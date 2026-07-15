@@ -36,6 +36,10 @@ export default function StudentDashboard() {
       setEnrolls(e.data);
       setSub(Object.keys(s.data || {}).length ? s.data : null);
       setNotes(n.data);
+    } catch (err) {
+      // Previously a failure here silently left the dashboard showing "Not subscribed"
+      // even when the subscription was actually active — now it surfaces instead of hiding.
+      toast({ title: "Couldn't load your dashboard", description: err?.response?.data?.detail || err.message, variant: "destructive" });
     } finally { setLoading(false); }
   };
 
@@ -48,14 +52,6 @@ export default function StudentDashboard() {
     try {
       await api.post("/student/subscription/cancel");
       toast({ title: "Subscription cancelled" });
-      load();
-    } catch (err) { toast({ title: "Failed", description: err?.response?.data?.detail || err.message, variant: "destructive" }); }
-  };
-
-  const confirmPaid = async () => {
-    try {
-      await api.post("/student/subscription/confirm");
-      toast({ title: "Thanks!", description: "Your subscription is now active." });
       load();
     } catch (err) { toast({ title: "Failed", description: err?.response?.data?.detail || err.message, variant: "destructive" }); }
   };
@@ -113,13 +109,10 @@ export default function StudentDashboard() {
                   <div className="flex items-center gap-2 text-slate-700"><CreditCard className="h-4 w-4 text-[#1D4ED8]" /> Outstanding: <strong>R{sub.outstanding_zar ?? 0}</strong></div>
                 </div>
                 <div className="mt-6 flex flex-wrap gap-2">
-                  {sub.status === "pending_payment" && sub.paystack_url && (
-                    <>
-                      <a href={sub.paystack_url} target="_blank" rel="noopener noreferrer">
-                        <Button className="rounded-full bg-[#1D4ED8] hover:bg-[#1E40AF]" data-testid="pay-paystack">Pay with Paystack</Button>
-                      </a>
-                      <Button variant="outline" onClick={confirmPaid} className="rounded-full" data-testid="confirm-paid">I've paid</Button>
-                    </>
+                  {sub.status === "pending_payment" && (
+                    <Button onClick={() => nav("/pricing")} className="rounded-full bg-[#1D4ED8] hover:bg-[#1E40AF]" data-testid="resume-checkout">
+                      Complete payment
+                    </Button>
                   )}
                   {sub.status === "active" && (
                     <Button onClick={cancel} variant="outline" className="rounded-full text-red-600 border-red-200 hover:bg-red-50" data-testid="cancel-sub">

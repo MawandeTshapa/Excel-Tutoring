@@ -782,6 +782,8 @@ async def my_notifications(user: dict = Depends(require_user)):
     if sub and sub.get("status") == "active":
         npd = sub.get("next_payment_date")
         if isinstance(npd, datetime):
+            if npd.tzinfo is None:
+                npd = npd.replace(tzinfo=timezone.utc)
             days = (npd - datetime.now(timezone.utc)).days
             if 0 <= days <= 5:
                 notes.append({"type": "info", "title": "Payment due soon", "message": f"Your next payment is in {days} day(s)."})
