@@ -973,6 +973,73 @@ async def admin_subscriptions(_: dict = Depends(require_admin)):
     return subs
 
 
+# -----------------------------------------------------------------------------
+# Account cleanup — flags likely-unused accounts, admin confirms each deletion
+# -----------------------------------------------------------------------------
+ACCOUNT_STALE_DAYS = int(os.environ.get("ACCOUNT_STALE_DAYS", "30"))
+
+
+@api.get("/admin/accounts/cleanup-candidates")
+async def cleanup_candidates(_: dict = Depends(require_admin)):
+    """Flags accounts that look unused. Nothing here is deleted automatically —
+    this just surfaces candidates for the admin to review and confirm one by one."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=ACCOUNT_STALE_DAYS)
+    users = await db.users.find({"role": {"$ne": "admin"}}, {"_id": 0, "password_hash": 0}).to_list(5000)
+    candidates = []
+
+    for u in users:
+        created_at = u.get("created_at")
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+        if isinstance(created_at, datetime) and created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if not created_at or created_at > cutoff:
+            continue  # too new to judge as "unused" yet
+
+        reason = None
+        if u["role"] == "pending":
+            reason = "Never finished signing up"
+        elif u["role"] in ("student_highschool", "student_university"):
+            sub = await db.subscriptions.find_one({"user_id": u["user_id"]})
+            paid = await db.payments.find_one({"user_id": u["user_id"], "status": "paid"})
+            if not sub and not paid:
+                reason = "Never started a subscription"
+            elif sub and not paid:
+                reason = "Started checkout but never completed payment"
+        elif u["role"] == "tutor":
+            has_students = await db.enrollments.find_one({"tutor_user_id": u["user_id"]})
+            if not has_students:
+                reason = "Never assigned any students"
+
+        if reason:
+            candidates.append({
+                "user_id": u["user_id"],
+                "name": u["name"],
+                "email": u["email"],
+                "role": u["role"],
+                "created_at": created_at.isoformat(),
+                "reason": reason,
+            })
+
+    candidates.sort(key=lambda c: c["created_at"])
+    return candidates
+
+
+@api.delete("/admin/accounts/{user_id}")
+async def delete_account(user_id: str, _: dict = Depends(require_admin)):
+    target = await db.users.find_one({"user_id": user_id})
+    if not target:
+        raise HTTPException(404, "Account not found")
+    if target.get("role") == "admin":
+        raise HTTPException(400, "Refusing to delete an admin account.")
+
+    await db.users.delete_one({"user_id": user_id})
+    await db.subscriptions.delete_many({"user_id": user_id})
+    await db.enrollments.delete_many({"$or": [{"student_user_id": user_id}, {"tutor_user_id": user_id}]})
+    # Payment records are kept for accounting/audit purposes even after the account is deleted.
+    return {"ok": True}
+
+
 @api.get("/admin/analytics")
 async def admin_analytics(_: dict = Depends(require_admin)):
     total_students = await db.users.count_documents({"role": {"$in": ["student_highschool", "student_university"]}})

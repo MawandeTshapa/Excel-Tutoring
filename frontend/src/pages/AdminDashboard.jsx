@@ -86,11 +86,12 @@ export default function AdminDashboard() {
   const [msgs, setMsgs] = useState([]);
   const [modules, setModules] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [candidates, setCandidates] = useState([]);
   const { toast } = useToast();
 
   const load = async () => {
     try {
-      const [a, s, t, tu, ts, sb, m, mo, pl] = await Promise.all([
+      const [a, s, t, tu, ts, sb, m, mo, pl, cc] = await Promise.all([
         api.get("/admin/analytics"),
         api.get("/admin/students"),
         api.get("/admin/tutors"),
@@ -100,9 +101,11 @@ export default function AdminDashboard() {
         api.get("/admin/contact-messages"),
         api.get("/modules"),
         api.get("/pricing"),
+        api.get("/admin/accounts/cleanup-candidates"),
       ]);
       setAnalytics(a.data); setStudents(s.data); setApps(t.data); setActiveTutors(tu.data);
       setTestimonials(ts.data); setSubs(sb.data); setMsgs(m.data); setModules(mo.data); setPlans(pl.data);
+      setCandidates(cc.data);
     } catch (e) { toast({ title: "Failed to load", description: e?.response?.data?.detail || e.message, variant: "destructive" }); }
   };
   useEffect(() => { load(); }, []);
@@ -131,6 +134,14 @@ export default function AdminDashboard() {
     if (!window.confirm("Delete this testimonial?")) return;
     try { await api.delete(`/admin/testimonials/${id}`); toast({ title: "Deleted" }); load(); }
     catch (e) { toast({ title: "Failed", description: e?.response?.data?.detail || e.message, variant: "destructive" }); }
+  };
+  const deleteAccount = async (c) => {
+    if (!window.confirm(`Delete ${c.name} (${c.email})? This can't be undone.`)) return;
+    try {
+      await api.delete(`/admin/accounts/${c.user_id}`);
+      toast({ title: "Account deleted" });
+      load();
+    } catch (e) { toast({ title: "Failed", description: e?.response?.data?.detail || e.message, variant: "destructive" }); }
   };
 
   return (
@@ -163,6 +174,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="modules" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-modules">Modules ({modules.length})</TabsTrigger>
             <TabsTrigger value="plans" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-plans">Pricing ({plans.length})</TabsTrigger>
             <TabsTrigger value="images" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-images">Images</TabsTrigger>
+            <TabsTrigger value="cleanup" className="rounded-full data-[state=active]:bg-[#050A15] data-[state=active]:text-white" data-testid="tab-cleanup">Cleanup ({candidates.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="students" className="mt-6">
@@ -288,6 +300,43 @@ export default function AdminDashboard() {
 
           <TabsContent value="images" className="mt-6">
             <ImagesAdmin />
+          </TabsContent>
+
+          <TabsContent value="cleanup" className="mt-6">
+            <p className="mb-4 text-sm text-slate-500">
+              Accounts flagged here look unused (never subscribed, never assigned, or never finished signing up) and are older than a few days.
+              Nothing is deleted automatically — review each one and confirm.
+            </p>
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
+                  <tr><th className="p-4">Name</th><th className="p-4">Email</th><th className="p-4">Role</th><th className="p-4">Joined</th><th className="p-4">Reason</th><th className="p-4"></th></tr>
+                </thead>
+                <tbody>
+                  {candidates.map((c) => (
+                    <tr key={c.user_id} className="border-t border-slate-100" data-testid={`cleanup-row-${c.user_id}`}>
+                      <td className="p-4 font-medium">{c.name}</td>
+                      <td className="p-4 text-slate-600">{c.email}</td>
+                      <td className="p-4"><Badge variant="secondary">{c.role.replace("student_", "").replace("_", " ")}</Badge></td>
+                      <td className="p-4 text-slate-600">{fmt(c.created_at)}</td>
+                      <td className="p-4 text-amber-700">{c.reason}</td>
+                      <td className="p-4">
+                        <Button
+                          onClick={() => deleteAccount(c)}
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full border-red-200 text-red-600 hover:bg-red-50"
+                          data-testid={`delete-account-${c.user_id}`}
+                        >
+                          <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                  {candidates.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-400">No unused accounts found.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
