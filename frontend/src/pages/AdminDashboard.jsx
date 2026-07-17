@@ -181,7 +181,7 @@ export default function AdminDashboard() {
             <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
-                  <tr><th className="p-4">Name</th><th className="p-4">Email</th><th className="p-4">Role</th><th className="p-4">Joined</th></tr>
+                  <tr><th className="p-4">Name</th><th className="p-4">Email</th><th className="p-4">Role</th><th className="p-4">Grade</th><th className="p-4">Subjects needed</th><th className="p-4">Joined</th></tr>
                 </thead>
                 <tbody>
                   {students.map((s) => (
@@ -189,10 +189,12 @@ export default function AdminDashboard() {
                       <td className="p-4 font-medium">{s.name}</td>
                       <td className="p-4 text-slate-600">{s.email}</td>
                       <td className="p-4"><Badge variant="secondary">{s.role.replace("student_", "")}</Badge></td>
+                      <td className="p-4 text-slate-600">{s.grade ? `Grade ${s.grade}` : "—"}</td>
+                      <td className="p-4 text-slate-600">{s.subjects_needed?.length ? s.subjects_needed.join(", ") : "—"}</td>
                       <td className="p-4 text-slate-600">{fmt(s.created_at)}</td>
                     </tr>
                   ))}
-                  {students.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-slate-400">No students yet.</td></tr>}
+                  {students.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-400">No students yet.</td></tr>}
                 </tbody>
               </table>
             </div>

@@ -11,13 +11,14 @@ import secrets
 import hmac
 import hashlib
 import json
+import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
 import bcrypt
 import jwt
 import requests
-from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends, Header, UploadFile, File
+from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends, Header, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
@@ -55,6 +56,66 @@ if CLOUDINARY_CLOUD_NAME:
         api_secret=CLOUDINARY_API_SECRET,
         secure=True,
     )
+
+# Brevo (transactional email) — same HTTP-API approach used elsewhere, since Render's
+# free tier blocks outbound SMTP ports.
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
+BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", "no-reply@exceltutoringacademy.co.za")
+BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "Excel Tutoring")
+
+# Twilio (SMS)
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM_NUMBER = os.environ.get("TWILIO_FROM_NUMBER", "")
+
+# Where YOUR (admin) event notifications go — separate from a user's own email/phone
+ADMIN_NOTIFY_EMAIL = os.environ.get("ADMIN_NOTIFY_EMAIL", ADMIN_EMAIL)
+ADMIN_NOTIFY_PHONE = os.environ.get("ADMIN_NOTIFY_PHONE", "")
+
+
+def send_email(to_email: str, to_name: str, subject: str, html_content: str):
+    """Fire-and-forget email via Brevo. Never raises — a failed notification
+    should never break the actual request that triggered it."""
+    if not BREVO_API_KEY:
+        logger.warning(f"BREVO_API_KEY not set — skipped email '{subject}' to {to_email}")
+        return
+    try:
+        requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json", "accept": "application/json"},
+            json={
+                "sender": {"name": BREVO_SENDER_NAME, "email": BREVO_SENDER_EMAIL},
+                "to": [{"email": to_email, "name": to_name or to_email}],
+                "subject": subject,
+                "htmlContent": html_content,
+            },
+            timeout=10,
+        )
+    except Exception as e:
+        logger.error(f"Brevo email failed ({subject} -> {to_email}): {e}")
+
+
+def send_sms(to_number: str, message: str):
+    """Fire-and-forget SMS via Twilio. Never raises."""
+    if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER):
+        logger.warning(f"Twilio not fully configured — skipped SMS to {to_number}")
+        return
+    try:
+        requests.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json",
+            auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+            data={"To": to_number, "From": TWILIO_FROM_NUMBER, "Body": message},
+            timeout=10,
+        )
+    except Exception as e:
+        logger.error(f"Twilio SMS failed (-> {to_number}): {e}")
+
+
+def notify_admin(subject: str, message: str):
+    """Sends the same event to the admin via both email and SMS (if configured)."""
+    send_email(ADMIN_NOTIFY_EMAIL, "Admin", subject, f"<p>{message}</p>")
+    if ADMIN_NOTIFY_PHONE:
+        send_sms(ADMIN_NOTIFY_PHONE, f"{subject}: {message}")
 
 Role = Literal["admin", "tutor", "student_highschool", "student_university", "pending"]
 
@@ -102,6 +163,8 @@ class RegisterIn(BaseModel):
     name: str = Field(min_length=1)
     role: Literal["student_highschool", "student_university", "tutor"]
     phone: Optional[str] = None
+    grade: Optional[str] = None
+    subjects_needed: Optional[List[str]] = None
 
 
 class LoginIn(BaseModel):
@@ -307,7 +370,7 @@ async def require_admin(request: Request) -> dict:
 # Auth endpoints
 # -----------------------------------------------------------------------------
 @api.post("/auth/register")
-async def register(data: RegisterIn, response: Response):
+async def register(data: RegisterIn, response: Response, background_tasks: BackgroundTasks):
     email = data.email.lower().strip()
     existing = await db.users.find_one({"email": email})
     if existing:
@@ -321,9 +384,20 @@ async def register(data: RegisterIn, response: Response):
         "auth_provider": "email",
         "password_hash": hash_password(data.password),
         "phone": data.phone,
+        "grade": data.grade,
+        "subjects_needed": data.subjects_needed,
         "created_at": datetime.now(timezone.utc),
     }
     await db.users.insert_one(doc)
+
+    if data.role in ("student_highschool", "student_university"):
+        background_tasks.add_task(
+            notify_admin,
+            "New student signup",
+            f"{doc['name']} ({doc['email']}) signed up as {data.role.replace('student_', '')}."
+            + (f" Grade: {data.grade}." if data.grade else "")
+            + (f" Needs help with: {', '.join(data.subjects_needed)}." if data.subjects_needed else ""),
+        )
 
     access = create_access_token(user_id)
     refresh = create_refresh_token(user_id)
@@ -486,7 +560,7 @@ async def list_testimonials():
 
 
 @api.post("/testimonials")
-async def submit_testimonial(data: TestimonialIn):
+async def submit_testimonial(data: TestimonialIn, background_tasks: BackgroundTasks):
     doc = {
         "id": str(uuid.uuid4()),
         "name": data.name,
@@ -497,11 +571,12 @@ async def submit_testimonial(data: TestimonialIn):
         "created_at": datetime.now(timezone.utc),
     }
     await db.testimonials.insert_one(doc)
+    background_tasks.add_task(notify_admin, "New testimonial for review", f"{data.name} left a {data.rating}-star testimonial: \"{data.message[:120]}\"")
     return {"ok": True, "message": "Thanks! Your testimonial is awaiting approval."}
 
 
 @api.post("/tutors/apply")
-async def apply_tutor(data: TutorApplicationIn):
+async def apply_tutor(data: TutorApplicationIn, background_tasks: BackgroundTasks):
     doc = {
         "id": str(uuid.uuid4()),
         **data.model_dump(),
@@ -509,17 +584,23 @@ async def apply_tutor(data: TutorApplicationIn):
         "created_at": datetime.now(timezone.utc),
     }
     await db.tutor_applications.insert_one(doc)
+    background_tasks.add_task(
+        notify_admin,
+        "New tutor application",
+        f"{data.full_name} ({data.email}) applied to tutor {', '.join(data.subjects)} — {data.qualification}, {data.experience_years} yrs experience.",
+    )
     return {"ok": True, "message": "Application received. We'll be in touch shortly."}
 
 
 @api.post("/contact")
-async def contact(data: ContactIn):
+async def contact(data: ContactIn, background_tasks: BackgroundTasks):
     doc = {
         "id": str(uuid.uuid4()),
         **data.model_dump(),
         "created_at": datetime.now(timezone.utc),
     }
     await db.contact_messages.insert_one(doc)
+    background_tasks.add_task(notify_admin, "New contact message", f"{data.name} ({data.email}): \"{data.message[:160]}\"")
     return {"ok": True, "message": "Thanks! We'll be in touch soon."}
 
 
@@ -652,6 +733,15 @@ async def _activate_subscription_from_reference(reference: str) -> bool:
         "status": "paid",
         "created_at": now,
     })
+
+    student = await db.users.find_one({"user_id": sub["user_id"]}, {"_id": 0, "password_hash": 0})
+    student_desc = f"{student['name']} ({student['email']})" if student else sub["user_id"]
+    asyncio.create_task(asyncio.to_thread(
+        notify_admin,
+        "Payment received",
+        f"{student_desc} paid R{sub['amount_zar']} for {sub.get('plan_name', 'a plan')}.",
+    ))
+
     return True
 
 
@@ -763,13 +853,20 @@ async def paystack_webhook(request: Request, x_paystack_signature: Optional[str]
 
 
 @api.post("/student/subscription/cancel")
-async def cancel_subscription(user: dict = Depends(require_user)):
+async def cancel_subscription(user: dict = Depends(require_user), background_tasks: BackgroundTasks = None):
+    sub = await db.subscriptions.find_one({"user_id": user["user_id"]})
     res = await db.subscriptions.update_one(
         {"user_id": user["user_id"]},
         {"$set": {"status": "cancelled", "cancelled_at": datetime.now(timezone.utc)}},
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="No subscription")
+    if background_tasks is not None:
+        background_tasks.add_task(
+            notify_admin,
+            "Subscription cancelled",
+            f"{user['name']} ({user['email']}) cancelled their {sub.get('plan_name', 'plan') if sub else 'plan'} subscription.",
+        )
     return {"ok": True}
 
 
@@ -816,7 +913,7 @@ async def admin_tutors(_: dict = Depends(require_admin)):
 
 
 @api.patch("/admin/tutors/{app_id}/{action}")
-async def admin_tutor_action(app_id: str, action: str, _: dict = Depends(require_admin)):
+async def admin_tutor_action(app_id: str, action: str, background_tasks: BackgroundTasks, _: dict = Depends(require_admin)):
     if action not in ("approve", "reject"):
         raise HTTPException(400, "Invalid action")
     appn = await db.tutor_applications.find_one({"id": app_id}, {"_id": 0})
@@ -830,7 +927,7 @@ async def admin_tutor_action(app_id: str, action: str, _: dict = Depends(require
         existing = await db.users.find_one({"email": appn["email"].lower()})
         if not existing:
             # Instead of generating a password ourselves, create a one-time invite the tutor
-            # uses to set their own password. Admin shares this link (WhatsApp/email/etc).
+            # uses to set their own password. It's emailed to them automatically below.
             token = secrets.token_urlsafe(32)
             await db.tutor_invites.insert_one({
                 "token": token,
@@ -846,6 +943,25 @@ async def admin_tutor_action(app_id: str, action: str, _: dict = Depends(require
             })
             invite_link = f"{FRONTEND_URL}/tutor-invite/{token}"
             logger.info(f"Created tutor invite for {appn['email']}")
+
+            first_name = appn["full_name"].split(" ")[0]
+            background_tasks.add_task(
+                send_email,
+                appn["email"],
+                appn["full_name"],
+                "You're approved to tutor with Excel Tutoring!",
+                f"""
+                <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+                    <h2>Congratulations, {first_name}!</h2>
+                    <p>Your tutor application with Excel Tutoring has been approved.</p>
+                    <p>Click the button below to set your password and finish setting up your account:</p>
+                    <p style="margin:24px 0">
+                        <a href="{invite_link}" style="background:#1D4ED8;color:#fff;padding:12px 24px;border-radius:999px;text-decoration:none;font-weight:600">Set your password</a>
+                    </p>
+                    <p style="color:#64748b;font-size:13px">This link expires in 14 days and can only be used once. If the button doesn't work, copy this link into your browser: {invite_link}</p>
+                </div>
+                """,
+            )
     return {"ok": True, "status": status, "invite_link": invite_link}
 
 
