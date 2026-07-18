@@ -698,6 +698,27 @@ async def my_enrollments(user: dict = Depends(require_user)):
 @api.get("/student/subscription")
 async def my_subscription(user: dict = Depends(require_user)):
     sub = await db.subscriptions.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if sub and sub.get("pending_plan_id") and sub.get("status") == "active":
+        npd = sub.get("next_payment_date")
+        if isinstance(npd, datetime):
+            if npd.tzinfo is None:
+                npd = npd.replace(tzinfo=timezone.utc)
+            if npd <= datetime.now(timezone.utc):
+                # Renewal date has arrived — apply the plan change that was queued earlier.
+                now = datetime.now(timezone.utc)
+                await db.subscriptions.update_one(
+                    {"user_id": user["user_id"]},
+                    {"$set": {
+                        "plan_id": sub["pending_plan_id"],
+                        "plan_name": sub["pending_plan_name"],
+                        "amount_zar": sub["pending_amount_zar"],
+                        "next_payment_date": now + timedelta(days=30),
+                        "pending_plan_id": None,
+                        "pending_plan_name": None,
+                        "pending_amount_zar": None,
+                    }},
+                )
+                sub = await db.subscriptions.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if sub:
         for k in ("next_payment_date", "started_at", "cancelled_at"):
             if isinstance(sub.get(k), datetime):
@@ -752,6 +773,30 @@ async def subscribe(data: SubscribeIn, user: dict = Depends(require_user)):
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
+    existing = await db.subscriptions.find_one({"user_id": user["user_id"]})
+
+    # Already paying — don't overwrite their current, already-paid-for plan. Queue the
+    # change instead; it takes effect automatically once their next payment date arrives.
+    if existing and existing.get("status") == "active":
+        if existing.get("plan_id") == plan["id"]:
+            raise HTTPException(status_code=400, detail="You're already on this plan.")
+        await db.subscriptions.update_one(
+            {"user_id": user["user_id"]},
+            {"$set": {
+                "pending_plan_id": plan["id"],
+                "pending_plan_name": plan["name"],
+                "pending_amount_zar": plan["price_zar"],
+            }},
+        )
+        npd = existing.get("next_payment_date")
+        npd_str = npd.strftime("%d %b %Y") if isinstance(npd, datetime) else "your next payment date"
+        return {
+            "ok": True,
+            "scheduled": True,
+            "message": f"You're still on {existing.get('plan_name', 'your current plan')} until {npd_str}. "
+                       f"You'll move to {plan['name']} automatically after that — no extra payment needed now.",
+        }
+
     now = datetime.now(timezone.utc)
     reference = f"exceltut_{uuid.uuid4().hex[:16]}"
 
@@ -767,6 +812,7 @@ async def subscribe(data: SubscribeIn, user: dict = Depends(require_user)):
                 "reference": reference,
                 "callback_url": f"{FRONTEND_URL}/payment/callback",
                 "metadata": {"user_id": user["user_id"], "plan_id": plan["id"]},
+                "channels": ["card", "apple_pay", "bank", "bank_transfer", "ussd", "qr", "mobile_money", "eft"],
             },
             timeout=15,
         )
@@ -789,6 +835,9 @@ async def subscribe(data: SubscribeIn, user: dict = Depends(require_user)):
         "outstanding_zar": plan["price_zar"],
         "paystack_reference": reference,
         "cancelled_at": None,
+        "pending_plan_id": None,
+        "pending_plan_name": None,
+        "pending_amount_zar": None,
     }
     await db.subscriptions.update_one(
         {"user_id": user["user_id"]}, {"$set": doc}, upsert=True
@@ -1087,6 +1136,29 @@ async def admin_subscriptions(_: dict = Depends(require_admin)):
         user = await db.users.find_one({"user_id": s["user_id"]}, {"_id": 0, "password_hash": 0})
         s["user"] = {"email": user["email"], "name": user["name"]} if user else None
     return subs
+
+
+@api.get("/admin/payments")
+async def admin_payments(_: dict = Depends(require_admin)):
+    """Every recorded payment — lets you spot and remove test/self-test transactions
+    that shouldn't count toward real revenue."""
+    payments = await db.payments.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    for p in payments:
+        if isinstance(p.get("created_at"), datetime):
+            p["created_at"] = p["created_at"].isoformat()
+        user = await db.users.find_one({"user_id": p["user_id"]}, {"_id": 0, "password_hash": 0})
+        p["user"] = {"email": user["email"], "name": user["name"]} if user else None
+    return payments
+
+
+@api.delete("/admin/payments/{payment_id}")
+async def admin_delete_payment(payment_id: str, _: dict = Depends(require_admin)):
+    """Removes a payment record from revenue reporting (e.g. your own test transactions).
+    This does not refund anything on Paystack's side — it only affects what shows in your dashboard."""
+    res = await db.payments.delete_one({"id": payment_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Payment not found")
+    return {"ok": True}
 
 
 # -----------------------------------------------------------------------------

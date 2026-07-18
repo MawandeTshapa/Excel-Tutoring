@@ -12,13 +12,24 @@ const ROLES = [
   { id: "student_university", label: "University Student" },
 ];
 
+const GRADES = ["8", "9", "10", "11", "12"];
+const HS_SUBJECTS = ["Mathematics", "Physical Sciences", "Life Sciences"];
+const UNI_SUBJECTS = ["University Mathematics", "Statistics", "Computer Science", "Chemistry"];
+
 export default function Signup() {
-  const [form, setForm] = useState({ name: "", email: "", password: "", phone: "", role: "student_highschool" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", phone: "", role: "student_highschool", grade: "", subjects_needed: [] });
   const [loading, setLoading] = useState(false);
   const { setUser } = useAuth();
   const nav = useNavigate();
   const { toast } = useToast();
   const heroImage = useSiteImage("signup_hero", "https://images.pexels.com/photos/6326370/pexels-photo-6326370.jpeg");
+  const subjectOptions = form.role === "student_highschool" ? HS_SUBJECTS : UNI_SUBJECTS;
+
+  const toggleSubject = (s) => {
+    setForm((f) => f.subjects_needed.includes(s)
+      ? { ...f, subjects_needed: f.subjects_needed.filter((x) => x !== s) }
+      : { ...f, subjects_needed: [...f.subjects_needed, s] });
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -76,10 +87,46 @@ export default function Signup() {
             <label className="text-sm font-medium">I am a…</label>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {ROLES.map((r) => (
-                <button type="button" key={r.id} onClick={() => setForm({ ...form, role: r.id })}
+                <button type="button" key={r.id} onClick={() => setForm({ ...form, role: r.id, grade: "", subjects_needed: [] })}
                   className={`rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${form.role === r.id ? "border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]" : "border-slate-200 text-slate-700 hover:border-slate-300"}`}
                   data-testid={`signup-role-${r.id}`}>
                   {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {form.role === "student_highschool" && (
+            <div>
+              <label className="text-sm font-medium">Grade</label>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {GRADES.map((g) => (
+                  <button
+                    type="button"
+                    key={g}
+                    onClick={() => setForm({ ...form, grade: g })}
+                    className={`rounded-full border px-4 py-2 text-sm transition-colors ${form.grade === g ? "border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]" : "border-slate-200 text-slate-700 hover:border-slate-300"}`}
+                    data-testid={`signup-grade-${g}`}
+                  >
+                    Grade {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="text-sm font-medium">Subjects you need help with</label>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {subjectOptions.map((s) => (
+                <button
+                  type="button"
+                  key={s}
+                  onClick={() => toggleSubject(s)}
+                  className={`rounded-full border px-4 py-2 text-sm transition-colors ${form.subjects_needed.includes(s) ? "border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]" : "border-slate-200 text-slate-700 hover:border-slate-300"}`}
+                  data-testid={`signup-subject-${s}`}
+                >
+                  {s}
                 </button>
               ))}
             </div>

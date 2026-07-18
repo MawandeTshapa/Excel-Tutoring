@@ -87,11 +87,12 @@ export default function AdminDashboard() {
   const [modules, setModules] = useState([]);
   const [plans, setPlans] = useState([]);
   const [candidates, setCandidates] = useState([]);
+  const [payments, setPayments] = useState([]);
   const { toast } = useToast();
 
   const load = async () => {
     try {
-      const [a, s, t, tu, ts, sb, m, mo, pl, cc] = await Promise.all([
+      const [a, s, t, tu, ts, sb, m, mo, pl, cc, py] = await Promise.all([
         api.get("/admin/analytics"),
         api.get("/admin/students"),
         api.get("/admin/tutors"),
@@ -102,13 +103,23 @@ export default function AdminDashboard() {
         api.get("/modules"),
         api.get("/pricing"),
         api.get("/admin/accounts/cleanup-candidates"),
+        api.get("/admin/payments"),
       ]);
       setAnalytics(a.data); setStudents(s.data); setApps(t.data); setActiveTutors(tu.data);
       setTestimonials(ts.data); setSubs(sb.data); setMsgs(m.data); setModules(mo.data); setPlans(pl.data);
-      setCandidates(cc.data);
+      setCandidates(cc.data); setPayments(py.data);
     } catch (e) { toast({ title: "Failed to load", description: e?.response?.data?.detail || e.message, variant: "destructive" }); }
   };
   useEffect(() => { load(); }, []);
+
+  const deletePayment = async (p) => {
+    if (!window.confirm(`Remove this R${p.amount_zar} payment from revenue? This doesn't refund anything on Paystack — it only affects your dashboard numbers.`)) return;
+    try {
+      await api.delete(`/admin/payments/${p.id}`);
+      toast({ title: "Payment removed from revenue" });
+      load();
+    } catch (e) { toast({ title: "Failed", description: e?.response?.data?.detail || e.message, variant: "destructive" }); }
+  };
 
   const tutorAction = async (id, action) => {
     try {
@@ -232,7 +243,7 @@ export default function AdminDashboard() {
             </div>
           </TabsContent>
 
-          <TabsContent value="subs" className="mt-6">
+          <TabsContent value="subs" className="mt-6 space-y-8">
             <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
@@ -251,6 +262,35 @@ export default function AdminDashboard() {
                   {subs.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400">No subscriptions yet.</td></tr>}
                 </tbody>
               </table>
+            </div>
+
+            <div>
+              <div className="mb-3">
+                <div className="eyebrow">Payment records</div>
+                <p className="mt-1 text-sm text-slate-500">This is what your revenue figure is calculated from. Remove any test or self-test payments here — it only affects your dashboard, not Paystack.</p>
+              </div>
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
+                    <tr><th className="p-4">Student</th><th className="p-4">Amount</th><th className="p-4">Date</th><th className="p-4"></th></tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((p) => (
+                      <tr key={p.id} className="border-t border-slate-100" data-testid={`payment-row-${p.id}`}>
+                        <td className="p-4 font-medium">{p.user?.name || "—"} <div className="text-xs text-slate-500">{p.user?.email}</div></td>
+                        <td className="p-4">R{p.amount_zar}</td>
+                        <td className="p-4 text-slate-600">{fmt(p.created_at)}</td>
+                        <td className="p-4 text-right">
+                          <Button onClick={() => deletePayment(p)} variant="outline" size="sm" className="rounded-full border-red-200 text-red-600 hover:bg-red-50" data-testid={`del-payment-${p.id}`}>
+                            <Trash2 className="mr-1 h-3.5 w-3.5" /> Remove
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                    {payments.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-slate-400">No payments recorded.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </TabsContent>
 

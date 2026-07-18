@@ -104,6 +104,11 @@ export default function StudentDashboard() {
               <>
                 <div className="mt-4 font-display text-2xl font-semibold">{sub.plan_name}</div>
                 <div className="mt-1 text-slate-600">R{sub.amount_zar} / month</div>
+                {sub.pending_plan_name && (
+                  <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800" data-testid="pending-plan-note">
+                    Switching to <strong>{sub.pending_plan_name}</strong> (R{sub.pending_amount_zar}/mo) on {fmtDate(sub.next_payment_date)}.
+                  </div>
+                )}
                 <div className="mt-5 space-y-2 text-sm">
                   <div className="flex items-center gap-2 text-slate-700"><Calendar className="h-4 w-4 text-[#1D4ED8]" /> Next payment: <strong>{fmtDate(sub.next_payment_date)}</strong></div>
                   <div className="flex items-center gap-2 text-slate-700"><CreditCard className="h-4 w-4 text-[#1D4ED8]" /> Outstanding: <strong>R{sub.outstanding_zar ?? 0}</strong></div>
