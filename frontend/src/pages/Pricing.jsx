@@ -39,11 +39,18 @@ function Plan({ p, onSubscribe }) {
   );
 }
 
+function isSafari() {
+  if (typeof navigator === "undefined") return true;
+  const ua = navigator.userAgent;
+  return /^((?!chrome|android|crios|fxios|edgios|opios).)*safari/i.test(ua);
+}
+
 export default function Pricing() {
   const [plans, setPlans] = useState([]);
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [showApplePayNote] = useState(() => !isSafari());
 
   useEffect(() => { api.get("/pricing").then((r) => setPlans(r.data)); }, []);
 
@@ -85,6 +92,11 @@ export default function Pricing() {
           <div className="eyebrow eyebrow-inverse">Pricing</div>
           <h1 className="mt-4 font-display text-5xl font-semibold tracking-tighter md:text-7xl">Simple plans. No surprises.</h1>
           <p className="mt-6 max-w-2xl text-lg text-slate-300">Flexible monthly subscriptions. Cancel anytime from your dashboard. All billing is handled securely.</p>
+          {showApplePayNote && (
+            <p className="mt-4 max-w-2xl text-sm text-slate-400" data-testid="apple-pay-note">
+              🍎 Want to pay with Apple Pay? Open this page in Safari — Apple Pay only works there, not in Chrome or other browsers.
+            </p>
+          )}
         </div>
       </section>
 
